@@ -2,7 +2,7 @@ package frontcam.frontcamid;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.api.distmarker.Dist;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +15,7 @@ public class MakeMeVtuber {
     public MakeMeVtuber(IEventBus modEventBus) {
         LOGGER.info("[MakeMeVtuber] Main mod initialized.");
 
-        if (FMLEnvironment.dist == Dist.CLIENT) {
+        if (FMLLoader.getDist() == Dist.CLIENT) {
             MakeMeVtuberClient.init(modEventBus);
         }
     }

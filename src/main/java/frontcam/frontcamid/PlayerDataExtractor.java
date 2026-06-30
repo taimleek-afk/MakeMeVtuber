@@ -24,7 +24,6 @@ public class PlayerDataExtractor {
 
     private static Field cubesField;
     private static Field childrenField;
-    private static Field polygonsField;
     private static Field verticesField;
     private static Field normalField;
     private static Field posField;
@@ -32,8 +31,10 @@ public class PlayerDataExtractor {
     private static Field vField;
 
     private static boolean reflectionInitialized = false;
-    private static boolean polygonReflectionInitialized = false;
     private static boolean vertexReflectionInitialized = false;
+
+    // Cache the render state to avoid creating a new one every frame
+    private static net.minecraft.client.renderer.entity.state.PlayerRenderState cachedRenderState = null;
 
     private static void initBaseReflection() {
         if (reflectionInitialized) return;
@@ -61,70 +62,6 @@ public class PlayerDataExtractor {
         }
     }
 
-    private static void initPolygonReflection(Object cube) {
-        if (polygonReflectionInitialized) return;
-        polygonReflectionInitialized = true;
-        try {
-            for (Field f : cube.getClass().getDeclaredFields()) {
-                if (f.getType().isArray()) {
-                    f.setAccessible(true);
-                    Object val = f.get(cube);
-                    if (val != null && ((Object[]) val).length == 6) {
-                        polygonsField = f;
-                        LOGGER.info("[MakeMeVtuber] Polygon field found: {}", f.getName());
-                        break;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("[MakeMeVtuber] Polygon reflection failed", e);
-        }
-    }
-
-    private static void initVertexReflection(Object polygon) {
-        if (vertexReflectionInitialized) return;
-        vertexReflectionInitialized = true;
-        try {
-            Class<?> polyClass = polygon.getClass();
-            for (Field f : polyClass.getDeclaredFields()) {
-                f.setAccessible(true);
-                if (f.getType().isArray() && verticesField == null) {
-                    verticesField = f;
-                } else if (f.getType() == org.joml.Vector3f.class && normalField == null) {
-                    normalField = f;
-                }
-            }
-            LOGGER.info("[MakeMeVtuber] Vertex reflection: vertices={}, normal={}",
-                    verticesField != null ? verticesField.getName() : "NULL",
-                    normalField != null ? normalField.getName() : "NULL");
-
-            if (verticesField != null) {
-                Object[] verts = (Object[]) verticesField.get(polygon);
-                if (verts != null && verts.length > 0 && verts[0] != null) {
-                    Class<?> vtxClass = verts[0].getClass();
-                    for (Field f : vtxClass.getDeclaredFields()) {
-                        f.setAccessible(true);
-                        if (f.getType() == org.joml.Vector3f.class && posField == null) {
-                            posField = f;
-                        } else if (f.getType() == float.class) {
-                            if (uField == null) {
-                                uField = f;
-                            } else if (vField == null) {
-                                vField = f;
-                            }
-                        }
-                    }
-                    LOGGER.info("[MakeMeVtuber] Vertex fields: pos={}, u={}, v={}",
-                            posField != null ? posField.getName() : "NULL",
-                            uField != null ? uField.getName() : "NULL",
-                            vField != null ? vField.getName() : "NULL");
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("[MakeMeVtuber] Vertex reflection failed", e);
-        }
-    }
-
     public static PlayerModelData extract(Minecraft client, LocalPlayer player) {
         initBaseReflection();
         PlayerModelData data = new PlayerModelData();
@@ -132,15 +69,19 @@ public class PlayerDataExtractor {
         PlayerRenderer playerRenderer = (PlayerRenderer) client.getEntityRenderDispatcher().getRenderer(player);
         if (playerRenderer == null) return data;
 
-        @SuppressWarnings("unchecked")
-        PlayerModel<AbstractClientPlayer> model = (PlayerModel<AbstractClientPlayer>) playerRenderer.getModel();
+        PlayerModel model = (PlayerModel) playerRenderer.getModel();
 
         PlayerSkin skin = ((AbstractClientPlayer) player).getSkin();
         data.slimModel = (skin.model() == PlayerSkin.Model.SLIM);
 
-        float partialTick = client.getTimer().getGameTimeDeltaPartialTick(true);
-        model.setupAnim(player, player.walkAnimation.position(), player.walkAnimation.speed(),
-                player.tickCount + partialTick, player.getYHeadRot() - player.yBodyRot, player.getXRot());
+        // In 1.21.2+, setupAnim requires an EntityRenderState.
+        // We use extractRenderState to populate the state, then call setupAnim on the model.
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        if (cachedRenderState == null) {
+            cachedRenderState = playerRenderer.createRenderState();
+        }
+        playerRenderer.extractRenderState(player, cachedRenderState, partialTick);
+        model.setupAnim(cachedRenderState);
 
         data.bodyParts.add(extractPart("head", model.head, false));
         data.bodyParts.add(extractPart("hat", model.hat, false));
@@ -200,6 +141,50 @@ public class PlayerDataExtractor {
         return part;
     }
 
+    private static void initVertexReflection(ModelPart.Polygon polygon) {
+        if (vertexReflectionInitialized) return;
+        vertexReflectionInitialized = true;
+        try {
+            Class<?> polyClass = polygon.getClass();
+            for (Field f : polyClass.getDeclaredFields()) {
+                f.setAccessible(true);
+                if (f.getType().isArray() && verticesField == null) {
+                    verticesField = f;
+                } else if (f.getType() == org.joml.Vector3f.class && normalField == null) {
+                    normalField = f;
+                }
+            }
+            LOGGER.info("[MakeMeVtuber] Vertex reflection: vertices={}, normal={}",
+                    verticesField != null ? verticesField.getName() : "NULL",
+                    normalField != null ? normalField.getName() : "NULL");
+
+            if (verticesField != null) {
+                Object[] verts = (Object[]) verticesField.get(polygon);
+                if (verts != null && verts.length > 0 && verts[0] != null) {
+                    Class<?> vtxClass = verts[0].getClass();
+                    for (Field f : vtxClass.getDeclaredFields()) {
+                        f.setAccessible(true);
+                        if (f.getType() == org.joml.Vector3f.class && posField == null) {
+                            posField = f;
+                        } else if (f.getType() == float.class) {
+                            if (uField == null) {
+                                uField = f;
+                            } else if (vField == null) {
+                                vField = f;
+                            }
+                        }
+                    }
+                    LOGGER.info("[MakeMeVtuber] Vertex fields: pos={}, u={}, v={}",
+                            posField != null ? posField.getName() : "NULL",
+                            uField != null ? uField.getName() : "NULL",
+                            vField != null ? vField.getName() : "NULL");
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("[MakeMeVtuber] Vertex reflection failed", e);
+        }
+    }
+
     private static PlayerModelData.Cuboid extractCuboid(ModelPart.Cube cube) {
         PlayerModelData.Cuboid cuboid = new PlayerModelData.Cuboid();
         cuboid.minX = cube.minX;
@@ -209,25 +194,18 @@ public class PlayerDataExtractor {
         cuboid.maxY = cube.maxY;
         cuboid.maxZ = cube.maxZ;
 
-        if (!polygonReflectionInitialized) {
-            initPolygonReflection(cube);
-        }
-
-        if (polygonsField != null) {
-            try {
-                Object[] polygons = (Object[]) polygonsField.get(cube);
-                for (Object polygon : polygons) {
-                    if (polygon == null) continue;
-                    if (!vertexReflectionInitialized) {
-                        initVertexReflection(polygon);
-                    }
-                    PlayerModelData.Face face = extractFace(polygon);
-                    if (face != null) {
-                        cuboid.faces.add(face);
-                    }
+        // In 1.21.2+, ModelPart.Cube#polygons is public
+        ModelPart.Polygon[] polygons = cube.polygons;
+        if (polygons != null) {
+            for (ModelPart.Polygon polygon : polygons) {
+                if (polygon == null) continue;
+                if (!vertexReflectionInitialized) {
+                    initVertexReflection(polygon);
                 }
-            } catch (Exception e) {
-                LOGGER.error("[MakeMeVtuber] Polygon extraction failed", e);
+                PlayerModelData.Face face = extractFace(polygon);
+                if (face != null) {
+                    cuboid.faces.add(face);
+                }
             }
         }
 
@@ -238,7 +216,7 @@ public class PlayerDataExtractor {
         return cuboid;
     }
 
-    private static PlayerModelData.Face extractFace(Object polygon) {
+    private static PlayerModelData.Face extractFace(ModelPart.Polygon polygon) {
         if (verticesField == null || normalField == null || posField == null || uField == null || vField == null) {
             return null;
         }

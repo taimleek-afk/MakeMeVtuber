@@ -1,6 +1,5 @@
 package frontcam.frontcamid;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWImage;
@@ -75,7 +74,9 @@ public class MakeMeVtuberRenderer {
         if (!isOpen || !windowReady) return;
         if (client.player == null) return;
 
-        RenderSystem.recordRenderCall(() -> {
+        // Execute on the main render thread via Minecraft's executor
+        // (compatible with 1.21.2+ where RenderCall was removed in 1.21.5)
+        client.execute(() -> {
             try {
                 PlayerModelData data = PlayerDataExtractor.extract(client, client.player);
                 synchronized (dataLock) {
@@ -228,6 +229,7 @@ public class MakeMeVtuberRenderer {
         GL11.glColorMaterial(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT_AND_DIFFUSE);
 
         int skinTexId = GL11.glGenTextures();
+        int baseTexId = GL11.glGenTextures();
 
         windowReady = true;
         LOGGER.info("[MakeMeVtuber] Preview window ready.");
@@ -252,9 +254,10 @@ public class MakeMeVtuberRenderer {
             if (data != null) {
                 if (skinDirty && data.skinPixels != null) {
                     uploadSkinTexture(skinTexId, data);
+                    uploadBaseTexture(baseTexId, data);
                     skinDirty = false;
                 }
-                renderModel(data, skinTexId);
+                renderModel(data, baseTexId, skinTexId);
             }
 
             GLFW.glfwSwapBuffers(window);
@@ -263,6 +266,7 @@ public class MakeMeVtuberRenderer {
         }
 
         GL11.glDeleteTextures(skinTexId);
+        GL11.glDeleteTextures(baseTexId);
         GLFW.glfwDestroyWindow(window);
         windowReady = false;
         isOpen = false;
@@ -283,7 +287,79 @@ public class MakeMeVtuberRenderer {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    private void renderModel(PlayerModelData data, int skinTexId) {
+    /**
+     * Creates a base-only texture: overlay regions of the skin are zeroed out (transparent).
+     * Standard 64x64 skin layout overlay regions:
+     * - Hat:           x=32-63, y=0-15
+     * - Jacket:        x=16-39, y=32-47
+     * - Right sleeve:  x=40-55, y=32-47
+     * - Left sleeve:   x=48-63, y=48-63
+     * - Right pants:   x=0-15,  y=32-47
+     * - Left pants:    x=0-15,  y=48-63
+     */
+    private void uploadBaseTexture(int texId, PlayerModelData data) {
+        if (data.skinPixels == null) return;
+        int w = data.skinWidth;
+        int h = data.skinHeight;
+
+        data.skinPixels.position(0);
+        ByteBuffer basePixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                byte r = data.skinPixels.get();
+                byte g = data.skinPixels.get();
+                byte b = data.skinPixels.get();
+                byte a = data.skinPixels.get();
+
+                if (isOverlayRegion(x, y, w, h)) {
+                    // Zero out overlay regions
+                    basePixels.put((byte) 0);
+                    basePixels.put((byte) 0);
+                    basePixels.put((byte) 0);
+                    basePixels.put((byte) 0);
+                } else {
+                    basePixels.put(r);
+                    basePixels.put(g);
+                    basePixels.put(b);
+                    basePixels.put((byte) 0xFF); // force opaque for base
+                }
+            }
+        }
+        basePixels.flip();
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, w, h, 0,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, basePixels);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    }
+
+    private boolean isOverlayRegion(int x, int y, int w, int h) {
+        // Normalized to 64x64 standard skin
+        int nx = x * 64 / w;
+        int ny = y * 64 / h;
+
+        // Hat region: x=32-63, y=0-15
+        if (nx >= 32 && nx < 64 && ny >= 0 && ny < 16) return true;
+        // Jacket (body overlay): x=16-39, y=32-47
+        if (nx >= 16 && nx < 40 && ny >= 32 && ny < 48) return true;
+        // Right arm overlay (right sleeve): x=40-55, y=32-47
+        if (nx >= 40 && nx < 56 && ny >= 32 && ny < 48) return true;
+        // Left arm overlay (left sleeve): x=48-63, y=48-63
+        if (nx >= 48 && nx < 64 && ny >= 48 && ny < 64) return true;
+        // Right leg overlay (right pants): x=0-15, y=32-47
+        if (nx >= 0 && nx < 16 && ny >= 32 && ny < 48) return true;
+        // Left leg overlay (left pants): x=0-15, y=48-63
+        if (nx >= 0 && nx < 16 && ny >= 48 && ny < 64) return true;
+
+        return false;
+    }
+
+    private void renderModel(PlayerModelData data, int baseTexId, int overlayTexId) {
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
         float fov = 50.0f;
@@ -306,7 +382,7 @@ public class MakeMeVtuberRenderer {
         float[] lightDif = {0.9f, 0.9f, 0.9f, 1.0f};
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_AMBIENT, lightAmb);
         GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, skinTexId);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, baseTexId);
 
         float bodyAlpha = 1.0f;
         float legsAlpha = 1.0f;
@@ -327,6 +403,7 @@ public class MakeMeVtuberRenderer {
             bodyAlpha = 1.0f - fadeProgress * (1.0f - MIN_BODY_ALPHA);
         }
 
+        // === Base parts (opaque, overlay regions zeroed in texture) ===
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glEnable(GL11.GL_ALPHA_TEST);
         GL11.glAlphaFunc(GL11.GL_GREATER, 0.5f);
@@ -334,31 +411,7 @@ public class MakeMeVtuberRenderer {
         GL11.glDepthFunc(GL11.GL_LEQUAL);
         GL11.glDepthMask(true);
 
-        GL11.glAlphaFunc(GL11.GL_GREATER, 0.01f);
-        for (int i = 0; i < data.bodyParts.size(); i++) {
-            PlayerModelData.BodyPart part = data.bodyParts.get(i);
-            SmoothedPart smooth = (i < smoothedParts.size()) ? smoothedParts.get(i) : null;
-            if (!isOverlayPart(part.name)) continue;
-
-            float alpha = getPartAlpha(part.name, bodyAlpha, legsAlpha);
-            if (alpha <= 0.0f) continue;
-
-            if (alpha < 1.0f) {
-                GL11.glEnable(GL11.GL_POLYGON_STIPPLE);
-                GL11.glPolygonStipple(generateStipplePattern(alpha));
-            }
-            GL11.glColor4f(1f, 1f, 1f, 1f);
-            renderBodyPart(part, smooth);
-            if (alpha < 1.0f) {
-                GL11.glDisable(GL11.GL_POLYGON_STIPPLE);
-            }
-        }
-
-        GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
-        GL11.glDepthMask(true);
-        GL11.glAlphaFunc(GL11.GL_GREATER, 0.5f);
-
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, baseTexId);
         for (int i = 0; i < data.bodyParts.size(); i++) {
             PlayerModelData.BodyPart part = data.bodyParts.get(i);
             SmoothedPart smooth = (i < smoothedParts.size()) ? smoothedParts.get(i) : null;
@@ -373,13 +426,15 @@ public class MakeMeVtuberRenderer {
             }
             GL11.glColor4f(1f, 1f, 1f, 1f);
             renderBodyPart(part, smooth);
-
             if (alpha < 1.0f) {
                 GL11.glDisable(GL11.GL_POLYGON_STIPPLE);
             }
         }
 
-        GL11.glDisable(GL11.GL_CULL_FACE);
+        // === Overlay with blending (original texture with alpha) ===
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glEnable(GL11.GL_ALPHA_TEST);
+        GL11.glAlphaFunc(GL11.GL_GREATER, 0.01f);
         GL11.glDepthFunc(GL11.GL_LEQUAL);
         GL11.glDepthMask(true);
         GL11.glEnable(GL11.GL_BLEND);
@@ -387,12 +442,13 @@ public class MakeMeVtuberRenderer {
                 GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ZERO, GL11.GL_ONE
         );
-        GL11.glAlphaFunc(GL11.GL_GREATER, 0.01f);
 
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, overlayTexId);
         for (int i = 0; i < data.bodyParts.size(); i++) {
             PlayerModelData.BodyPart part = data.bodyParts.get(i);
-            SmoothedPart smooth = (i < smoothedParts.size()) ? smoothedParts.get(i) : null;
             if (!isOverlayPart(part.name)) continue;
+
+            SmoothedPart smooth = findBaseSmooth(part.name, data);
 
             float alpha = getPartAlpha(part.name, bodyAlpha, legsAlpha);
             if (alpha <= 0.0f) continue;
@@ -408,8 +464,8 @@ public class MakeMeVtuberRenderer {
             }
         }
 
-        GL11.glEnable(GL11.GL_CULL_FACE);
         GL11.glDisable(GL11.GL_BLEND);
+        GL11.glDepthMask(true);
 
         {
             PlayerModelData.BodyPart headPart = null;
@@ -465,6 +521,30 @@ public class MakeMeVtuberRenderer {
         return "hat".equals(name) || "jacket".equals(name) ||
                "left_sleeve".equals(name) || "right_sleeve".equals(name) ||
                "left_pants".equals(name) || "right_pants".equals(name);
+    }
+
+    /**
+     * Maps overlay part names to their corresponding base part names,
+     * then returns the smoothed transform from that base part.
+     */
+    private SmoothedPart findBaseSmooth(String overlayName, PlayerModelData data) {
+        String baseName = switch (overlayName) {
+            case "hat" -> "head";
+            case "jacket" -> "body";
+            case "left_sleeve" -> "left_arm";
+            case "right_sleeve" -> "right_arm";
+            case "left_pants" -> "left_leg";
+            case "right_pants" -> "right_leg";
+            default -> null;
+        };
+        if (baseName == null) return null;
+
+        for (int i = 0; i < data.bodyParts.size(); i++) {
+            if (baseName.equals(data.bodyParts.get(i).name) && i < smoothedParts.size()) {
+                return smoothedParts.get(i);
+            }
+        }
+        return null;
     }
 
     private float getPartAlpha(String name, float bodyAlpha, float legsAlpha) {

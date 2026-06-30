@@ -1,14 +1,15 @@
 package frontcam.frontcamid;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.model.PlayerModel;
-import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.entity.player.PlayerRenderer;
-import net.minecraft.client.renderer.texture.AbstractTexture;
-import net.minecraft.client.resources.PlayerSkin;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.model.ModelPart;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
+import net.minecraft.client.render.entity.model.PlayerEntityModel;
+import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
+import net.minecraft.client.texture.AbstractTexture;
+import net.minecraft.client.util.SkinTextures;
+import net.minecraft.util.Identifier;
 import org.lwjgl.opengl.GL11;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,7 @@ public class PlayerDataExtractor {
     private static boolean vertexReflectionInitialized = false;
 
     // Cache the render state to avoid creating a new one every frame
-    private static net.minecraft.client.renderer.entity.state.PlayerRenderState cachedRenderState = null;
+    private static PlayerEntityRenderState cachedRenderState = null;
 
     private static void initBaseReflection() {
         if (reflectionInitialized) return;
@@ -62,26 +63,25 @@ public class PlayerDataExtractor {
         }
     }
 
-    public static PlayerModelData extract(Minecraft client, LocalPlayer player) {
+    public static PlayerModelData extract(MinecraftClient client, ClientPlayerEntity player) {
         initBaseReflection();
         PlayerModelData data = new PlayerModelData();
 
-        PlayerRenderer playerRenderer = (PlayerRenderer) client.getEntityRenderDispatcher().getRenderer(player);
+        PlayerEntityRenderer playerRenderer = (PlayerEntityRenderer) client.getEntityRenderDispatcher().getRenderer(player);
         if (playerRenderer == null) return data;
 
-        PlayerModel model = (PlayerModel) playerRenderer.getModel();
+        PlayerEntityModel model = (PlayerEntityModel) playerRenderer.getModel();
 
-        PlayerSkin skin = ((AbstractClientPlayer) player).getSkin();
-        data.slimModel = (skin.model() == PlayerSkin.Model.SLIM);
+        SkinTextures skinTextures = player.getSkinTextures();
+        data.slimModel = (skinTextures.model() == SkinTextures.Model.SLIM);
 
-        // In 1.21.2+, setupAnim requires an EntityRenderState.
-        // We use extractRenderState to populate the state, then call setupAnim on the model.
-        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        // In 1.21.2+, setupAnim requires a render state
+        float tickDelta = client.getRenderTickCounter().getTickDelta(true);
         if (cachedRenderState == null) {
             cachedRenderState = playerRenderer.createRenderState();
         }
-        playerRenderer.extractRenderState(player, cachedRenderState, partialTick);
-        model.setupAnim(cachedRenderState);
+        playerRenderer.updateRenderState(player, cachedRenderState, tickDelta);
+        model.setAngles(cachedRenderState);
 
         data.bodyParts.add(extractPart("head", model.head, false));
         data.bodyParts.add(extractPart("hat", model.hat, false));
@@ -104,12 +104,12 @@ public class PlayerDataExtractor {
     private static PlayerModelData.BodyPart extractPart(String name, ModelPart modelPart, boolean invertPitch) {
         PlayerModelData.BodyPart part = new PlayerModelData.BodyPart(name);
 
-        part.posX = modelPart.x;
-        part.posY = modelPart.y;
-        part.posZ = modelPart.z;
-        part.rotX = invertPitch ? -modelPart.xRot : modelPart.xRot;
-        part.rotY = modelPart.yRot;
-        part.rotZ = modelPart.zRot;
+        part.posX = modelPart.pivotX;
+        part.posY = modelPart.pivotY;
+        part.posZ = modelPart.pivotZ;
+        part.rotX = invertPitch ? -modelPart.pitch : modelPart.pitch;
+        part.rotY = modelPart.yaw;
+        part.rotZ = modelPart.roll;
         part.scaleX = modelPart.xScale;
         part.scaleY = modelPart.yScale;
         part.scaleZ = modelPart.zScale;
@@ -118,8 +118,8 @@ public class PlayerDataExtractor {
         if (cubesField != null) {
             try {
                 @SuppressWarnings("unchecked")
-                List<ModelPart.Cube> cubes = (List<ModelPart.Cube>) cubesField.get(modelPart);
-                for (ModelPart.Cube cube : cubes) {
+                List<ModelPart.Cuboid> cubes = (List<ModelPart.Cuboid>) cubesField.get(modelPart);
+                for (ModelPart.Cuboid cube : cubes) {
                     PlayerModelData.Cuboid cuboid = extractCuboid(cube);
                     part.cuboids.add(cuboid);
                 }
@@ -141,12 +141,12 @@ public class PlayerDataExtractor {
         return part;
     }
 
-    private static void initVertexReflection(ModelPart.Polygon polygon) {
+    private static void initVertexReflection(ModelPart.Quad quad) {
         if (vertexReflectionInitialized) return;
         vertexReflectionInitialized = true;
         try {
-            Class<?> polyClass = polygon.getClass();
-            for (Field f : polyClass.getDeclaredFields()) {
+            Class<?> quadClass = quad.getClass();
+            for (Field f : quadClass.getDeclaredFields()) {
                 f.setAccessible(true);
                 if (f.getType().isArray() && verticesField == null) {
                     verticesField = f;
@@ -159,7 +159,7 @@ public class PlayerDataExtractor {
                     normalField != null ? normalField.getName() : "NULL");
 
             if (verticesField != null) {
-                Object[] verts = (Object[]) verticesField.get(polygon);
+                Object[] verts = (Object[]) verticesField.get(quad);
                 if (verts != null && verts.length > 0 && verts[0] != null) {
                     Class<?> vtxClass = verts[0].getClass();
                     for (Field f : vtxClass.getDeclaredFields()) {
@@ -185,7 +185,7 @@ public class PlayerDataExtractor {
         }
     }
 
-    private static PlayerModelData.Cuboid extractCuboid(ModelPart.Cube cube) {
+    private static PlayerModelData.Cuboid extractCuboid(ModelPart.Cuboid cube) {
         PlayerModelData.Cuboid cuboid = new PlayerModelData.Cuboid();
         cuboid.minX = cube.minX;
         cuboid.minY = cube.minY;
@@ -194,15 +194,15 @@ public class PlayerDataExtractor {
         cuboid.maxY = cube.maxY;
         cuboid.maxZ = cube.maxZ;
 
-        // In 1.21.2+, ModelPart.Cube#polygons is public
-        ModelPart.Polygon[] polygons = cube.polygons;
-        if (polygons != null) {
-            for (ModelPart.Polygon polygon : polygons) {
-                if (polygon == null) continue;
+        // In Fabric/Yarn, ModelPart.Cuboid has a 'sides' field (Quad[])
+        ModelPart.Quad[] quads = cube.sides;
+        if (quads != null) {
+            for (ModelPart.Quad quad : quads) {
+                if (quad == null) continue;
                 if (!vertexReflectionInitialized) {
-                    initVertexReflection(polygon);
+                    initVertexReflection(quad);
                 }
-                PlayerModelData.Face face = extractFace(polygon);
+                PlayerModelData.Face face = extractFace(quad);
                 if (face != null) {
                     cuboid.faces.add(face);
                 }
@@ -216,14 +216,14 @@ public class PlayerDataExtractor {
         return cuboid;
     }
 
-    private static PlayerModelData.Face extractFace(ModelPart.Polygon polygon) {
+    private static PlayerModelData.Face extractFace(ModelPart.Quad quad) {
         if (verticesField == null || normalField == null || posField == null || uField == null || vField == null) {
             return null;
         }
 
         try {
-            Object[] vertices = (Object[]) verticesField.get(polygon);
-            org.joml.Vector3f normal = (org.joml.Vector3f) normalField.get(polygon);
+            Object[] vertices = (Object[]) verticesField.get(quad);
+            org.joml.Vector3f normal = (org.joml.Vector3f) normalField.get(quad);
 
             if (vertices == null || vertices.length < 4) return null;
 
@@ -278,13 +278,13 @@ public class PlayerDataExtractor {
         cuboid.faces.add(face);
     }
 
-    private static void extractSkinTexture(Minecraft client, LocalPlayer player, PlayerModelData data) {
+    private static void extractSkinTexture(MinecraftClient client, ClientPlayerEntity player, PlayerModelData data) {
         try {
-            PlayerSkin skin = ((AbstractClientPlayer) player).getSkin();
-            ResourceLocation textureLocation = skin.texture();
+            SkinTextures skinTextures = player.getSkinTextures();
+            Identifier textureLocation = skinTextures.texture();
 
             AbstractTexture texture = client.getTextureManager().getTexture(textureLocation);
-            int texId = texture.getId();
+            int texId = texture.getGlId();
             if (texId <= 0) return;
 
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);

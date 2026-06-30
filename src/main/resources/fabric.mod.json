@@ -1,0 +1,36 @@
+{
+    "schemaVersion": 1,
+    "id": "makemevtuber",
+    "version": "${version}",
+    "name": "MakeMeVtuber",
+    "description": "A lightweight client-side mod that lets you instantly transform your player into a VTuber-style avatar using a simple command.",
+    "authors": [
+        "taimleek-afk"
+    ],
+    "contact": {
+        "homepage": "https://github.com/taimleek-afk/MakeMeVtuberFabric",
+        "sources": "https://github.com/taimleek-afk/MakeMeVtuberFabric",
+        "issues": "https://github.com/taimleek-afk/MakeMeVtuberFabric/issues"
+    },
+    "license": "MIT",
+    "icon": "assets/make-me-vtuber/icon.png",
+    "environment": "*",
+    "entrypoints": {
+        "main": [
+            "frontcam.frontcamid.MakeMeVtuber"
+        ],
+        "client": [
+            "frontcam.frontcamid.MakeMeVtuberClient"
+        ]
+    },
+    "mixins": [
+        "makemevtuber.mixins.json"
+    ],
+    "depends": {
+        "fabricloader": ">=0.16.0",
+        "minecraft": ">=1.21.3",
+        "java": ">=21",
+        "fabric-api": "*"
+    },
+    "suggests": {}
+}

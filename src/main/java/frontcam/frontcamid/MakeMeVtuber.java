@@ -1,22 +1,15 @@
 package frontcam.frontcamid;
 
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLLoader;
-import net.neoforged.api.distmarker.Dist;
+import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Mod(MakeMeVtuber.MOD_ID)
-public class MakeMeVtuber {
+public class MakeMeVtuber implements ModInitializer {
     public static final String MOD_ID = "makemevtuber";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    public MakeMeVtuber(IEventBus modEventBus) {
+    @Override
+    public void onInitialize() {
         LOGGER.info("[MakeMeVtuber] Main mod initialized.");
-
-        if (FMLLoader.getDist() == Dist.CLIENT) {
-            MakeMeVtuberClient.init(modEventBus);
-        }
     }
 }

@@ -1,14 +1,14 @@
 {
-	"required": true,
-	"package": "frontcam.frontcamid.mixin",
-	"compatibilityLevel": "JAVA_21",
-	"mixins": [
-		"ExampleMixin"
-	],
-	"client": [
-		"client.ExampleClientMixin"
-	],
-	"injectors": {
-		"defaultRequire": 1
-	}
+    "required": true,
+    "package": "frontcam.frontcamid.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "mixins": [
+        "ExampleMixin"
+    ],
+    "client": [
+        "client.ExampleClientMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
 }

@@ -1,6 +1,6 @@
 package frontcam.frontcamid;
 
-import net.minecraft.client.Minecraft;
+import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.opengl.GL;
@@ -70,12 +70,11 @@ public class MakeMeVtuberRenderer {
         MicrophoneCapture.getInstance().stop();
     }
 
-    public void tick(Minecraft client) {
+    public void tick(MinecraftClient client) {
         if (!isOpen || !windowReady) return;
         if (client.player == null) return;
 
-        // Execute on the main render thread via Minecraft's executor
-        // (compatible with 1.21.2+ where RenderCall was removed in 1.21.5)
+        // Execute on the main render thread
         client.execute(() -> {
             try {
                 PlayerModelData data = PlayerDataExtractor.extract(client, client.player);
@@ -287,16 +286,6 @@ public class MakeMeVtuberRenderer {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    /**
-     * Creates a base-only texture: overlay regions of the skin are zeroed out (transparent).
-     * Standard 64x64 skin layout overlay regions:
-     * - Hat:           x=32-63, y=0-15
-     * - Jacket:        x=16-39, y=32-47
-     * - Right sleeve:  x=40-55, y=32-47
-     * - Left sleeve:   x=48-63, y=48-63
-     * - Right pants:   x=0-15,  y=32-47
-     * - Left pants:    x=0-15,  y=48-63
-     */
     private void uploadBaseTexture(int texId, PlayerModelData data) {
         if (data.skinPixels == null) return;
         int w = data.skinWidth;
@@ -313,7 +302,6 @@ public class MakeMeVtuberRenderer {
                 byte a = data.skinPixels.get();
 
                 if (isOverlayRegion(x, y, w, h)) {
-                    // Zero out overlay regions
                     basePixels.put((byte) 0);
                     basePixels.put((byte) 0);
                     basePixels.put((byte) 0);
@@ -322,7 +310,7 @@ public class MakeMeVtuberRenderer {
                     basePixels.put(r);
                     basePixels.put(g);
                     basePixels.put(b);
-                    basePixels.put((byte) 0xFF); // force opaque for base
+                    basePixels.put((byte) 0xFF);
                 }
             }
         }
@@ -339,21 +327,14 @@ public class MakeMeVtuberRenderer {
     }
 
     private boolean isOverlayRegion(int x, int y, int w, int h) {
-        // Normalized to 64x64 standard skin
         int nx = x * 64 / w;
         int ny = y * 64 / h;
 
-        // Hat region: x=32-63, y=0-15
         if (nx >= 32 && nx < 64 && ny >= 0 && ny < 16) return true;
-        // Jacket (body overlay): x=16-39, y=32-47
         if (nx >= 16 && nx < 40 && ny >= 32 && ny < 48) return true;
-        // Right arm overlay (right sleeve): x=40-55, y=32-47
         if (nx >= 40 && nx < 56 && ny >= 32 && ny < 48) return true;
-        // Left arm overlay (left sleeve): x=48-63, y=48-63
         if (nx >= 48 && nx < 64 && ny >= 48 && ny < 64) return true;
-        // Right leg overlay (right pants): x=0-15, y=32-47
         if (nx >= 0 && nx < 16 && ny >= 32 && ny < 48) return true;
-        // Left leg overlay (left pants): x=0-15, y=48-63
         if (nx >= 0 && nx < 16 && ny >= 48 && ny < 64) return true;
 
         return false;
@@ -523,10 +504,6 @@ public class MakeMeVtuberRenderer {
                "left_pants".equals(name) || "right_pants".equals(name);
     }
 
-    /**
-     * Maps overlay part names to their corresponding base part names,
-     * then returns the smoothed transform from that base part.
-     */
     private SmoothedPart findBaseSmooth(String overlayName, PlayerModelData data) {
         String baseName = switch (overlayName) {
             case "hat" -> "head";

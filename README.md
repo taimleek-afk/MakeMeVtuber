@@ -26,7 +26,7 @@
 
 | In-game Render | Settings Window |
 |:-:|:-:|
-| ![In-game](https://github.com/user-attachments/assets/c0486226-1858-4f3f-97aa-ca95a8358520) | ![Settings](https://github.com/user-attachments/assets/93679381-5f93-4169-92fe-e473292f1088) |
+| ![In-game](https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExY3FqMHI1OWpqaGF3ZzZ3YzlzNmlqZjA0N2l2d2NwZTJlZ3RheHNpbiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/iqgYl4KVZVt17zulbd/giphy.gif) | ![Settings](https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNng1M3F6ZjZqNzdrc29qMjdidXcwaG5ldHU4a3dtYWh2dzkxZHRnYiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/dTuuWhgVob9D2bU9oI/giphy.gif) |
 
 ---
 

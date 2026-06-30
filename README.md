@@ -5,19 +5,19 @@
 <h1 align="center">MakeMeVtuber</h1>
 
 <p align="center">
-  A lightweight client-side NeoForge mod for Minecraft 1.21.1<br>
+  A lightweight client-side NeoForge mod for Minecraft 1.21.x<br>
   Transform your player into a VTuber-style avatar with a single command.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Minecraft-1.21.1-green?style=flat-square" alt="Minecraft">
+  <img src="https://img.shields.io/badge/Minecraft-1.21.x-green?style=flat-square" alt="Minecraft">
   <img src="https://img.shields.io/badge/Loader-NeoForge-orange?style=flat-square" alt="NeoForge">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Version-1.0.0-orange?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.1.1-blue?style=flat-square" alt="Version">
 </p>
 
 <p align="center">
-  <b>Looking for Fabric?</b> → <a href="https://github.com/taimleek-afk/MakeMeVtuber/tree/fabric">fabric branch</a>
+  <b>Looking for Fabric?</b> → <a href="https://github.com/taimleek-afk/MakeMeVtuber/tree/Fabric-1.21.1">Fabric-1.21.1 branch</a>
 </p>
 
 ---
@@ -46,8 +46,8 @@
 
 | | Version |
 |---|---|
-| Minecraft | 1.21.1 |
-| NeoForge | ≥ 21.1.172 |
+| Minecraft | 1.21.3 — 1.21.4 |
+| NeoForge | ≥ 21.3 |
 | Java | ≥ 21 |
 
 ---
@@ -55,8 +55,27 @@
 ## Installation
 
 1. Install [NeoForge](https://neoforged.net/)
-2. Place `makemevtuber-1.0.0.jar` into the `mods` folder
+2. Place `makemevtuber-2.1.1.jar` into the `mods` folder
 3. Launch the game
+
+---
+
+## Download
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/taimleek-afk/MakeMeVtuber/releases">
+        <img src="https://img.shields.io/github/v/release/taimleek-afk/MakeMeVtuber?label=GitHub%20Releases&style=for-the-badge&logo=github&color=181717" alt="GitHub Releases">
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://www.curseforge.com/minecraft/mc-mods/makemevtuber">
+        <img src="https://img.shields.io/badge/CurseForge-Download-F16436?style=for-the-badge&logo=curseforge&logoColor=white" alt="CurseForge">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -74,9 +93,13 @@ This opens:
 
 ---
 
-## Downloads
+## Branches
 
-Check [Releases](https://github.com/taimleek-afk/MakeMeVtuber/releases) for both NeoForge and Fabric builds.
+| Branch | Loader | Minecraft |
+|--------|--------|-----------|
+| `NeoForge-1.21.3-1.21.4` | NeoForge | 1.21.3 — 1.21.4 |
+| `NeoForge-1.21.1` | NeoForge | 1.21.1 |
+| `Fabric-1.21.1` | Fabric | 1.21.1 |
 
 ---
 

@@ -75,7 +75,7 @@ public class MakeMeVtuberClient {
         sb.append("§f Head Pitch: ").append(String.format("%.2f", player.getXRot())).append("°\n");
         sb.append("§f Body Yaw: ").append(String.format("%.2f", player.yBodyRot)).append("°\n");
         sb.append("§f Skin Model: ").append(
-            ((net.minecraft.client.player.AbstractClientPlayer) player).getSkin().model().id()
+            ((net.minecraft.client.player.AbstractClientPlayer) player).getSkin().model().name()
         ).append("\n");
         sb.append("§7(Live data streaming to render window)");
         return sb.toString();
